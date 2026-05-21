@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>TDS Monitor - Main Hub</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <header class="topbar">
+    <div class="title">
+      <span class="dot"></span>
+      <h1>TDS Monitor <span class="muted">- Main Hub</span></h1>
+    </div>
+
+    <div class="status">
+      <div class="chip" id="wifiChip" title="WiFi status">
+        <span class="ico">📶</span><span id="wifiText">WiFi</span>
+      </div>
+      <div class="chip" title="OTA Update">
+        <a class="link" href="/update">OTA</a>
+      </div>
+      <div class="chip" id="clockChip">
+        <span id="dateText">--</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Big hero card -->
+    <section class="card hero">
+      <div class="hero-left">
+        <div class="hero-icon" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M14 38c0-9 7-16 16-16 7 0 13 4 15 11 7 .4 12 6 12 13 0 7-6 13-13 13H27C19 59 14 53 14 46v-8Z" class="stroke"/>
+            <path d="M25 47h14" class="stroke"/>
+            <path d="M26 52h12" class="stroke"/>
+          </svg>
+        </div>
+
+        <div class="hero-value">
+          <div class="big" id="tdsValue">--</div>
+          <div class="unit">ppm</div>
+        </div>
+
+        <div class="hero-meta">
+          <div class="pill" id="qualityPill">--</div>
+          <div class="meta-line"><span class="k">Voltage</span> <span class="v" id="voltageValue">--</span> <span class="u">V</span></div>
+          <div class="meta-line"><span class="k">Sample age</span> <span class="v" id="ageValue">--</span> <span class="u">ms</span></div>
+        </div>
+      </div>
+
+      <div class="hero-right">
+        <div class="mini-title">TDS Trend</div>
+        <canvas id="chart" width="420" height="150" aria-label="TDS chart"></canvas>
+        <div class="mini-foot">
+          <span class="muted">Refresh:</span> <span id="refreshMs">1000</span> ms
+        </div>
+      </div>
+    </section>
+
+    <!-- Cards row -->
+    <section class="card">
+      <div class="card-h">
+        <div class="card-ico blue">💧</div>
+        <div>
+          <div class="card-title">Water Temperature</div>
+          <div class="card-sub">Compensation reference</div>
+        </div>
+      </div>
+      <div class="metric">
+        <div class="metric-big" id="tempValue">25</div>
+        <div class="metric-unit">°C</div>
+      </div>
+      <div class="progress">
+        <div class="bar" id="tempBar" style="width:50%"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">
+        <div class="card-ico blue">🛟</div>
+        <div>
+          <div class="card-title">Water Level</div>
+          <div class="card-sub">Dual reed ladder decode</div>
+        </div>
+      </div>
+      <div class="metric">
+        <div class="metric-big metric-level" id="waterLevelPercent">--</div>
+        <div class="metric-unit">%</div>
+      </div>
+      <div class="level-label" id="waterLevelLabel">Unknown</div>
+      <div class="level-volume"><span id="waterLevelLiters">--</span> L estimated</div>
+      <div class="progress">
+        <div class="bar water-bar" id="waterLevelBar" style="width:0%"></div>
+      </div>
+      <div class="kv level-kv">
+        <div class="row"><span class="k">Water height</span><span class="v" id="waterHeightValue">--</span></div>
+        <div class="row"><span class="k">Odd ladder</span><span class="v" id="oddLevelValue">--</span></div>
+        <div class="row"><span class="k">Even ladder</span><span class="v" id="evenLevelValue">--</span></div>
+        <div class="row"><span class="k">Level age</span><span class="v" id="levelAgeValue">--</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">
+        <div class="card-ico green">⚡</div>
+        <div>
+          <div class="card-title">Live Status</div>
+          <div class="card-sub">Device + API health</div>
+        </div>
+      </div>
+
+      <div class="kv">
+        <div class="row"><span class="k">API</span><span class="v" id="apiValue">--</span></div>
+        <div class="row"><span class="k">Uptime</span><span class="v" id="uptimeValue">--</span></div>
+      </div>
+
+      <div class="btnrow">
+        <button id="btnRefresh" class="btn">Refresh now</button>
+        <a class="btn ghost" href="/api/tds" target="_blank" rel="noopener">Raw JSON</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">
+        <div class="card-ico purple">🛠️</div>
+        <div>
+          <div class="card-title">Quick Actions</div>
+          <div class="card-sub">Common links</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a class="action" href="/update">Open OTA Update</a>
+        <a class="action" href="/health">Health check</a>
+        <a class="action" href="https://github.com/" target="_blank" rel="noopener" title="placeholder">Docs</a>
+      </div>
+
+      <div class="note muted">
+        Tip: Upload SPIFFS/LittleFS once (Upload Filesystem Image) so UI files are present.
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer muted">
+    <span>ESP32 TDS Monitor</span>
+    <span>•</span>
+    <span id="footerIp">Open this page using the ESP32 IP address</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
