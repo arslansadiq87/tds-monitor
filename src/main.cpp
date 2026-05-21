@@ -48,6 +48,7 @@ static const int OLED_H = 32;
 static const uint8_t OLED_ADDR = 0x3C; // try 0x3D if blank
 
 Adafruit_SSD1306 display(OLED_W, OLED_H, &Wire, -1);
+static bool oledReady = false;
 
 // ======================
 // TIMINGS (NON-BLOCKING)
@@ -186,6 +187,12 @@ static uint32_t restartAtMs = 0;
 static const int WDT_TIMEOUT_S = 8;
 
 static bool otaInProgress = false;
+static bool mainTaskWdtAdded = false;
+
+static bool setupAnalogInput(int pin, adc_attenuation_t attenuation);
+static void loadWifiCreds();
+static void startAP();
+static void attemptStaConnect();
 
 static float getWaterTempC() {
   return isnan(latestWaterTempC) ? DEFAULT_WATER_TEMP_C : latestWaterTempC;
@@ -208,6 +215,49 @@ static void setupTemperatureSensor() {
                   PIN_DS18B20,
                   DEFAULT_WATER_TEMP_C);
   }
+}
+
+static void setupDisplay() {
+  oledReady = false;
+
+  if (!Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL)) {
+    Serial.printf("[I2C] init failed on SDA=%d SCL=%d. OLED disabled.\n", PIN_I2C_SDA, PIN_I2C_SCL);
+    return;
+  }
+
+  Wire.beginTransmission(OLED_ADDR);
+  const uint8_t probeResult = Wire.endTransmission();
+  if (probeResult != 0) {
+    Serial.printf("[OLED] no device at 0x%02X (I2C status %u). OLED disabled.\n", OLED_ADDR, probeResult);
+    return;
+  }
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+    Serial.println("[OLED] init failed. Try addr 0x3D or check wiring.");
+    return;
+  }
+
+  oledReady = true;
+  display.clearDisplay();
+  display.display();
+}
+
+static void setupAdcInputs() {
+  analogReadResolution(12);
+  setupAnalogInput(PIN_TDS_ADC, ADC_11db);
+  setupAnalogInput(PIN_LEVEL_ODD_ADC, ADC_11db);
+  setupAnalogInput(PIN_LEVEL_EVEN_ADC, ADC_11db);
+}
+
+static void setupWifi() {
+  loadWifiCreds();
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
+  WiFi.setSleep(true);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  startAP();
+  attemptStaConnect();
 }
 
 static void sampleTemperatureNonBlocking() {
@@ -243,6 +293,17 @@ static float readAdcVoltage(int pin, int samples = 8) {
   for (int i = 0; i < samples; i++) sum += analogRead(pin);
   const float adc = (float)sum / (float)samples;
   return (adc * 3.3f) / 4095.0f;
+}
+
+static bool setupAnalogInput(int pin, adc_attenuation_t attenuation) {
+  if (digitalPinToAnalogChannel(pin) < 0) {
+    Serial.printf("[ADC] GPIO %d is not an ADC-capable pin on this board.\n", pin);
+    return false;
+  }
+
+  analogRead(pin); // Arduino-ESP32 3.x attaches the ADC bus on first read.
+  analogSetPinAttenuation(pin, attenuation);
+  return true;
 }
 
 static int decodeLadderSwitch(float voltage, const LadderTap* taps, size_t tapCount) {
@@ -351,7 +412,7 @@ static void sampleWaterLevelNonBlocking() {
 
 // ---------------- OLED helpers ----------------
 static void oledPower(bool on) {
-  if (display.width() == 0) return;
+  if (!oledReady) return;
 
   if (on) {
     display.ssd1306_command(SSD1306_DISPLAYON);
@@ -363,7 +424,7 @@ static void oledPower(bool on) {
 }
 
 static void oledDrawWelcome() {
-  if (display.width() == 0) return;
+  if (!oledReady) return;
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -376,7 +437,7 @@ static void oledDrawWelcome() {
 }
 
 static void oledDrawWaitingWiFi() {
-  if (display.width() == 0) return;
+  if (!oledReady) return;
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -390,7 +451,7 @@ static void oledDrawWaitingWiFi() {
 }
 
 static void oledDrawIP(const IPAddress& ip) {
-  if (display.width() == 0) return;
+  if (!oledReady) return;
 
   display.clearDisplay();
   display.setTextSize(1);
@@ -404,7 +465,7 @@ static void oledDrawIP(const IPAddress& ip) {
 }
 
 static void oledDrawTds() {
-  if (display.width() == 0) return;
+  if (!oledReady) return;
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -532,9 +593,9 @@ static void sampleTdsNonBlocking() {
 // WiFi storage
 // ======================
 static void loadWifiCreds() {
-  prefs.begin("wifi", true);
-  wifiSsid = prefs.getString("ssid", "");
-  wifiPass = prefs.getString("pass", "");
+  prefs.begin("wifi", false);
+  wifiSsid = prefs.isKey("ssid") ? prefs.getString("ssid", "") : "";
+  wifiPass = prefs.isKey("pass") ? prefs.getString("pass", "") : "";
   prefs.end();
 }
 
@@ -669,20 +730,21 @@ static void wifiLoop() {
 // Watchdog
 // ======================
 static void setupWatchdog() {
-#if ESP_IDF_VERSION_MAJOR >= 5
-  esp_task_wdt_config_t cfg = {};
-  cfg.timeout_ms = WDT_TIMEOUT_S * 1000;
-  cfg.trigger_panic = true;
-  cfg.idle_core_mask = 0;
-  esp_task_wdt_init(&cfg);
-#else
-  esp_task_wdt_init(WDT_TIMEOUT_S, true);
-#endif
-  esp_task_wdt_add(NULL);
+  esp_err_t err = esp_task_wdt_status(NULL);
+  if (err == ESP_OK) {
+    mainTaskWdtAdded = true;
+    return;
+  }
+
+  err = esp_task_wdt_add(NULL);
+  mainTaskWdtAdded = (err == ESP_OK);
+  if (!mainTaskWdtAdded && err != ESP_ERR_INVALID_STATE) {
+    Serial.printf("[WDT] add current task failed: %s\n", esp_err_to_name(err));
+  }
 }
 
 static inline void feedWatchdog() {
-  esp_task_wdt_reset();
+  if (mainTaskWdtAdded) esp_task_wdt_reset();
 }
 
 // ======================
@@ -835,7 +897,10 @@ static void setupArduinoOta() {
   ArduinoOTA.onStart([]() {
     otaInProgress = true;
     Serial.println("[OTA] Start");
-    esp_task_wdt_delete(NULL);
+    if (mainTaskWdtAdded) {
+      esp_task_wdt_delete(NULL);
+      mainTaskWdtAdded = false;
+    }
   });
 
   ArduinoOTA.onEnd([]() {
@@ -862,19 +927,8 @@ void setup() {
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_DS18B20, INPUT_PULLUP);
 
-  analogReadResolution(12);
-  analogSetPinAttenuation(PIN_TDS_ADC, ADC_11db);
-  analogSetPinAttenuation(PIN_LEVEL_ODD_ADC, ADC_11db);
-  analogSetPinAttenuation(PIN_LEVEL_EVEN_ADC, ADC_11db);
-
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
-    Serial.println("[OLED] init failed. Try addr 0x3D or check wiring.");
-  } else {
-    display.clearDisplay();
-    display.display();
-  }
+  setupAdcInputs();
+  setupDisplay();
 
   setOledMode(OledMode::Welcome);
   wifiConnectedShown = false;
@@ -882,13 +936,8 @@ void setup() {
 
   setupTemperatureSensor();
 
-  loadWifiCreds();
-  WiFi.mode(WIFI_AP_STA);
-  startAP();
-  WiFi.setAutoReconnect(true);
-  WiFi.persistent(false);
-
-  attemptStaConnect();
+  delay(200);
+  setupWifi();
 
   setupArduinoOta();
   setupWeb();
