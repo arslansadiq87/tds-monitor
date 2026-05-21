@@ -1,0 +1,39 @@
+rest:
+  - resource: http://tds.local/api/tds
+    scan_interval: 30
+    timeout: 5
+    sensor:
+      - name: "Water TDS"
+        unique_id: water_tds_ppm
+        value_template: "{{ value_json.tds_ppm | float(0) | round(1) }}"
+        unit_of_measurement: "ppm"
+
+      - name: "TDS Voltage"
+        unique_id: tds_voltage
+        value_template: "{{ value_json.voltage | float(0) | round(2) }}"
+        unit_of_measurement: "V"
+
+      - name: "Water Temperature"
+        unique_id: water_temp_c
+        value_template: "{{ value_json.temp_c | float(0) | round(1) }}"
+        unit_of_measurement: "°C"
+
+      - name: "TDS Age Raw"
+        unique_id: tds_age_ms
+        value_template: "{{ value_json.age_ms }}"
+
+      - name: "TDS Uptime Raw"
+        unique_id: tds_uptime_h
+        value_template: "{{ ((value_json.uptime_ms | int(0)) / 3600000) | round(2) }}"
+
+      - name: Water Tank Level
+        unique_id: water_tank_level
+        value_template: "{{ value_json.water_level_percent }}"
+        unit_of_measurement: "%"
+      - name: Water Tank State
+        unique_id: water_tank_state
+        value_template: "{{ value_json.water_level_label }}"
+      - name: Water Tank Liters
+        unique_id: water_tank_liters
+        value_template: "{{ value_json.water_volume_liters }}"
+        unit_of_measurement: "L"

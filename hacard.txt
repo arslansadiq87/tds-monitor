@@ -1,0 +1,39 @@
+type: vertical-stack
+cards:
+  - type: gauge
+    entity: sensor.water_tds
+    name: Water TDS
+    min: 0
+    max: 1000
+    severity:
+      green: 0
+      yellow: 300
+      red: 600
+  - type: custom:fluid-level-background-card
+    entity: sensor.water_tank_level
+    full_value: 100
+    level_color: rgba(0, 150, 255, 0.55)
+    background_color: rgba(0, 0, 0, 0.05)
+    top_margin: 5
+    card:
+      type: entities
+      title: Water Tank
+      show_header_toggle: false
+      entities:
+        - entity: sensor.water_tank_level
+          name: Tank Level
+        - entity: sensor.water_tank_liters
+          name: Water Volume
+  - type: entities
+    title: Water Sensor
+    entities:
+      - entity: sensor.water_tds
+      - entity: sensor.tds_voltage
+      - entity: sensor.water_temperature
+      - entity: sensor.water_tank_liters
+      - entity: sensor.tds_age_2
+      - entity: sensor.tds_uptime_2
+  - type: history-graph
+    hours_to_show: 24
+    entities:
+      - sensor.water_tds
